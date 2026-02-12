@@ -30,9 +30,6 @@ public class CounterConfig implements Runnable {
 
     @Override
     public void run() {
-        System.out.println("--- RMI-llionaireBank Client Connecting ---");
-        System.out.println("Target Service: " + serviceName);
-        System.out.println("Remote Address: " + serverIp + ":" + port);
     }
 
     // Getters

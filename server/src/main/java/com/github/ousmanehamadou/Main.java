@@ -1,5 +1,6 @@
 package com.github.ousmanehamadou;
 
+import com.github.ousmanehamadou.shared.IDGenerator;
 import com.github.ousmanehamadou.shared.MoneyOrder;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
@@ -18,17 +19,22 @@ public class Main {
     }
 
     try {
+//      IDGenerator localIdGenerator = new IDGeneratorImpl(new ArrayList<>());
+//      var localIdGenerator = (IDGenerator) UnicastRemoteObject.exportObject(localIdGenerator, 0);
+
       var localOrder = new MoneyOrderImpl(config.getServerName(), activityLog, nodes);
       var moneyOrderServiceStub = (MoneyOrder) UnicastRemoteObject.exportObject(localOrder, 0);
       var registry = LocateRegistry.createRegistry(config.getPort());
 
       registry.rebind(config.getServerName(), moneyOrderServiceStub);
 
-      if(config.getRemotePeers().isEmpty()) {
+      if (!config.getRemotePeers().isEmpty()) {
         nodes.joinGroup(config);
       }
+
     } catch (Exception e) {
-      System.out.printf("Unable to start Agent Network 1: %s%n", e.getMessage());
+      System.out.printf("Unable to start %s: %s%n", config.getServerName(), e.getMessage());
+      e.printStackTrace();
     }
   }
 }

@@ -1,8 +1,10 @@
 package com.github.ousmanehamadou;
 
 import com.github.ousmanehamadou.shared.MoneyOrder;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
-import java.rmi.server.UnicastRemoteObject;
+import java.util.Objects;
 import picocli.CommandLine;
 
 public class Main {
@@ -14,21 +16,26 @@ public class Main {
     if (exitCode != 0) {
       System.exit(-1);
     }
-
+    System.out.flush();
     try {
       var registry = LocateRegistry.getRegistry(config.getServerIp(), config.getPort());
       var moneyOrderServiceSub = (MoneyOrder) registry.lookup(config.getServiceName());
+      Objects.requireNonNull(moneyOrderServiceSub);
       TUI.clearScreen();
       System.out.flush();
       TUI.run(moneyOrderServiceSub);
 
-      registry.unbind(config.getServiceName());
-
-      UnicastRemoteObject.unexportObject(moneyOrderServiceSub, true);
       System.out.println(
-          "[SHUTDOWN] Server " + config.getServiceName() + " disconnected successfully.");
+          "[SHUTDOWN] Disconnected Server "
+              + config.getServiceName().toUpperCase()
+              + " successfully.");
+    } catch (NotBoundException e) {
+      System.err.println("The 'IDGenerator' service is not bound (registered) on the server.");
+    } catch (RemoteException e) {
+      System.err.println("Critical error: Unable to connect to the RMI Registry.");
     } catch (Exception e) {
-      System.out.println(e.getMessage());
+      System.out.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+      throw new RuntimeException(e);
     }
   }
 }

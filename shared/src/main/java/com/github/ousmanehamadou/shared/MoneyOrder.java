@@ -8,12 +8,15 @@ public interface MoneyOrder extends Remote {
   Order issuing(String from, String to, int amount)
       throws RemoteException, ServerIsNotReadyException;
 
-  Status cashing(int ref)
+  CashedStatus cashing(int ref)
       throws RemoteException, OrderNotFoundException, ServerIsNotReadyException;
 
   Status cancelling(int ref)
       throws RemoteException, OrderNotFoundException, ServerIsNotReadyException;
 
-  Order tracking(int ref)
-      throws RemoteException, OrderNotFoundException, ServerIsNotReadyException;
+  Order tracking(int ref) throws RemoteException, OrderNotFoundException, ServerIsNotReadyException;
+
+  Order updateOrderStatus(Order order, Status status) throws RemoteException;
+
+  String getRemoteName() throws RemoteException;
 }

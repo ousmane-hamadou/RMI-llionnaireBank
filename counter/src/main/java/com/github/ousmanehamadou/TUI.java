@@ -1,9 +1,10 @@
 package com.github.ousmanehamadou;
 
 import com.github.ousmanehamadou.shared.MoneyOrder;
+import com.github.ousmanehamadou.shared.Status;
+import com.github.ousmanehamadou.shared.exception.DomainException;
 import java.rmi.RemoteException;
 import java.util.Scanner;
-import jdk.jshell.spi.ExecutionControl;
 
 public class TUI {
   private static final Scanner sc = new Scanner(System.in);
@@ -26,7 +27,7 @@ public class TUI {
 
     Please share the MTCN ONLY with the recipient.
 
-    Press any key to continue
+    Press Enter to continue
     ==========================================================
     """;
 
@@ -59,17 +60,19 @@ public class TUI {
         return;
       }
 
-      switch (Integer.parseInt(input)) {
-        case 1 -> handleMoneySend(null);
-        case 2 ->
-            throw new ExecutionControl.NotImplementedException(
-                "CASHING    - Withdrawal at the counter");
-        case 3 ->
-            throw new ExecutionControl.NotImplementedException(
-                "CANCELLING - Void or reverse a transaction");
-        case 4 ->
-            throw new ExecutionControl.NotImplementedException(
-                "TRACKING   - Check status (Paid / Pending)");
+      int selection = 0;
+
+      try {
+        selection = Integer.parseInt(input);
+      } catch (NumberFormatException e) {
+        continue;
+      }
+      if (selection > 4) continue;
+      switch (selection) {
+        case 1 -> handleMoneySend(moneyOrderService);
+        case 2 -> handleCashing(moneyOrderService);
+        case 3 -> handleCancellation(moneyOrderService);
+        case 4 -> handleTracking(moneyOrderService);
       }
     }
   }
@@ -105,19 +108,18 @@ public class TUI {
     String confirm = sc.nextLine().trim();
 
     clearScreen();
-    System.out.flush();
     if (confirm.equalsIgnoreCase("yes") || confirm.equalsIgnoreCase("y")) {
       try {
-        moneyOrderService.issuing(sender, recipient, amount);
+        var order = moneyOrderService.issuing(sender, recipient, amount);
+        System.out.printf(successMsg, order.ref());
       } catch (RemoteException e) {
         System.out.print(getServerUnreachableMessage());
       }
-      System.out.printf(successMsg, 0);
     } else {
       System.out.print(getAbortMessage());
     }
-    sc.nextLine();
     System.out.flush();
+    sc.nextLine();
   }
 
   private static String getIssuingForm(
@@ -173,7 +175,7 @@ public class TUI {
         Action: ISSUANCE CANCELLED
         Status: NO FUNDS WERE PROCESSED
 
-        Press Any Key To Returning To Main Menu...
+        Press Enter To Returning To Main Menu...
         %s
         """
         .formatted(border, border, border);
@@ -194,5 +196,244 @@ public class TUI {
         %s
         """
         .formatted(border, border, border);
+  }
+
+  private static void handleTracking(MoneyOrder moneyOrder) {
+    clearScreen();
+    System.out.print(getTrackingSearchPage(""));
+    System.out.flush();
+
+    String input = sc.nextLine().strip();
+
+    clearScreen();
+    System.out.print(getTrackingSearchPage(input));
+    System.out.flush();
+
+    sc.nextLine();
+
+    clearScreen();
+    System.out.flush();
+    try {
+      var order = moneyOrder.tracking(Integer.parseInt(input));
+      System.out.printf(
+          getTrackingResultPage(
+              String.valueOf(order.ref()),
+              order.by(),
+              order.to(),
+              order.amount(),
+              order.status().getClass().getSimpleName().toUpperCase()));
+      System.out.flush();
+      sc.nextLine();
+    } catch (DomainException.OrderNotFoundException e) {
+      System.out.print(getReferenceNotFoundPage(input));
+      System.out.flush();
+      sc.nextLine();
+    } catch (RemoteException e) {
+      throw new RuntimeException(e);
+    }
+    clearScreen();
+    System.out.flush();
+  }
+
+  public static String getTrackingSearchPage(String input) {
+    String border = "----------------------------------------------------------";
+    String prompt = "Enter Order Reference";
+
+    if (!input.isBlank()) {
+      prompt = "Confirm Order Reference? (YES/NO)";
+    }
+
+    return """
+        %s
+           \uD83D\uDD0D  MONEY ORDER TRACKING SYSTEM  \uD83D\uDD0D
+        %s
+        Please enter the Control Number to locate the transaction:
+
+          Order Reference : %s
+        %s
+        %s>\s"""
+        .formatted(border, border, input, border, prompt);
+  }
+
+  public static String getTrackingResultPage(
+      String ref, String sender, String recipient, int amount, String status) {
+    String border = "==========================================================";
+
+    return """
+        %s
+           \uD83D\uDACA  TRANSACTION STATUS REPORT  \uD83D\uDACA
+        %s
+        Reference : %s
+
+          - SENDER      : %s
+          - RECIPIENT   : %s
+          - AMOUNT      : %d
+          - CURRENT STATUS : %s
+
+        [LEGEND]:
+          Cashed - Ready for cashing at any branch.
+          AwaitingPayout - Funds already paid to recipient.
+          Cancelled - Voided by sender or system.
+        %s
+        Press Enter to return to menu..."""
+        .formatted(border, border, ref, sender, recipient, amount, status, border);
+  }
+
+  public static String getReferenceNotFoundPage(String ref) {
+    String alertBorder = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
+
+    return """
+        %s
+           ⚠️  TRANSACTION REFERENCE NOT FOUND  ⚠️
+        %s
+
+        The REF provided does not match any record in our system.
+
+        ENTERED REF : %s
+        ERROR STATUS : INVALID_REFERENCE
+
+        [ACTION]: Please verify the receipt and try again.
+        %s
+        Press Enter to return to Main Menu>\s"""
+        .formatted(alertBorder, alertBorder, ref, alertBorder);
+  }
+
+  public static String getCashingInputPage() {
+    String border = "----------------------------------------------------------";
+
+    return """
+        %s
+           \uD83D\uDCB5  MONEY ORDER CASHING (WITHDRAWAL)  \uD83D\uDCB5
+        %s
+        Please enter the REF provided by the recipient:
+
+        %s
+        Enter REF to verify >\s"""
+        .formatted(border, border, border);
+  }
+
+  public static String getCancellationPrompt() {
+    String border = "----------------------------------------------------------";
+
+    return """
+        %s
+             TRANSACTION CANCELLATION (VOID)
+        %s
+        Please enter the MTCN of the mandate to be cancelled:
+
+        Warning: This action will permanently VOID the money order.
+        %s
+        Enter REF to Cancel >\s"""
+        .formatted(border, border, border);
+  }
+
+  private static void handleCashing(MoneyOrder moneyOrder) {
+    clearScreen();
+    System.out.flush();
+
+    System.out.print(getCashingInputPage());
+
+    int ref = Integer.parseInt(sc.nextLine());
+    clearScreen();
+    System.out.flush();
+    try {
+      var ret = moneyOrder.cashing(ref);
+      System.out.println(ret);
+      var status = ret.status();
+      var sref = String.valueOf(ref);
+
+      switch (status) {
+        case Status.Cashed ignored when ret.done() ->
+            System.out.print(getCashingSuccessMessage(sref));
+        case Status.Cancelled ignored -> System.out.print(getCancelSuccessMessage(sref));
+        default -> System.out.print(getAlreadyCashedMessage(String.valueOf(ref)));
+      }
+    } catch (DomainException.OrderNotFoundException e) {
+      System.out.println("---------");
+      System.out.print(getReferenceNotFoundPage(String.valueOf(ref)));
+    } catch (RemoteException e) {
+      System.out.println("(((((((((((((((((((((((((((((((((");
+      System.out.flush();
+      throw new RuntimeException(e);
+    }
+    System.out.flush();
+    sc.nextLine();
+  }
+
+  public static String getCashingSuccessMessage(String ref) {
+    return """
+        ==========================================================
+           \uD83D\uDCB0  PAYMENT CONFIRMED (PAID)  \uD83D\uDCB0
+        ==========================================================
+        Reference  : %s
+        Status     : COLLECTED
+
+        The transaction is now closed in the cluster.
+        ==========================================================
+        """
+        .formatted(ref);
+  }
+
+  public static String getAlreadyCashedMessage(String ref) {
+    return """
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           ⚠️  ERROR: ALREADY COLLECTED  ⚠️
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        The money order (%s) has already been cashed.
+
+        Status: PAID
+        Note: Double payment is strictly prohibited.
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        """
+        .formatted(ref);
+  }
+
+  public static String getCancelSuccessMessage(String ref) {
+    return """
+        ----------------------------------------------------------
+           ✅  TRANSACTION VOIDED  ✅
+        ----------------------------------------------------------
+        REF    : %s
+        Status : CANCELLED
+        Result : Funds are no longer available for cashing.
+        ----------------------------------------------------------
+        """
+        .formatted(ref);
+  }
+
+  public static String getInvalidMtcnMessage(String ref) {
+    return """
+        **********************************************************
+           ❌  INVALID REFERENCE NUMBER  ❌
+        **********************************************************
+        Reference [%s] was not found in the distributed ledger.
+
+        **********************************************************
+        """
+        .formatted(ref);
+  }
+
+  public static void handleCancellation(MoneyOrder moneyOrder) {
+    clearScreen();
+    System.out.flush();
+
+    System.out.printf(getCancellationPrompt());
+    System.out.flush();
+
+    int ref = Integer.parseInt(sc.nextLine().strip());
+
+    try {
+      clearScreen();
+      Status status = moneyOrder.cancelling(ref);
+      System.out.print(getCashingSuccessMessage(String.valueOf(ref)));
+
+      sc.nextLine();
+    } catch (RemoteException e) {
+      throw new RuntimeException(e);
+    } catch (DomainException.OrderNotFoundException e) {
+      System.out.println(getInvalidMtcnMessage(String.valueOf(ref)));
+      sc.nextLine();
+    }
   }
 }

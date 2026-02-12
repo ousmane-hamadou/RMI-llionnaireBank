@@ -21,10 +21,8 @@ public class DistributedBankNode {
     try (ExecutorService executor = Executors.newFixedThreadPool(numberOfPeers)) {
 
       System.out.println("--- Joining Distributed Group (Waiting for all peers) ---");
-
-      for (Map.Entry<String, Integer> entry : config.getRemotePeers().entrySet()) {
-        String peerName = entry.getKey();
-        Integer peerPort = entry.getValue();
+      System.out.flush();
+      for (var node : config.getRemotePeers()) {
 
         executor.submit(
             () -> {
@@ -34,22 +32,23 @@ public class DistributedBankNode {
 
               while (!connected) {
                 try {
-                  Registry registry = LocateRegistry.getRegistry("localhost", peerPort);
-                  MoneyOrder service = (MoneyOrder) registry.lookup(peerName);
+                  Registry registry = LocateRegistry.getRegistry(node.ip(), node.port());
+                  MoneyOrder service = (MoneyOrder) registry.lookup(node.name());
 
-                  peerServices.put(peerName, service);
+                  peerServices.put(node.name(), service);
                   connected = true;
 
                   // On décrémente le verrou (latch)
                   latch.countDown();
                   System.out.println(
                       "[JOINED] Connected to "
-                          + peerName
+                          + node.name()
                           + " ("
                           + latch.getCount()
                           + " remaining)");
 
-                  System.out.printf("[JOINED] Connected to %s on port %d%n", peerName, peerPort);
+                  System.out.printf(
+                      "[JOINED] Connected to %s on port %d%n", node.name(), node.port());
 
                 } catch (Exception e) {
                   try {
