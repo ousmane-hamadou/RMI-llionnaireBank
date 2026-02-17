@@ -14,15 +14,9 @@ import picocli.CommandLine.Option;
     description = "Server-side configuration for the RMI-llionaireBank transaction system.")
 public class BankServerConfig implements Runnable {
 
-  // Getters for RMI integration
-  @Getter
-  @Option(
-      names = {"-p", "--port"},
-      description =
-          "The port number on which the RMI registry is listening. Default: ${DEFAULT-VALUE}",
-      defaultValue = "1099")
-  private int port;
+  @Getter private final List<Node> remotePeers = new ArrayList<>();
 
+  @Getter
   @Option(
       names = {"-i", "--ip"},
       description =
@@ -32,13 +26,19 @@ public class BankServerConfig implements Runnable {
 
   @Getter
   @Option(
+      names = {"-p", "--port"},
+      description =
+          "The port number on which the RMI registry is listening. Default: ${DEFAULT-VALUE}",
+      defaultValue = "1099")
+  private int port;
+
+  @Getter
+  @Option(
       names = {"-n", "--name"},
       description =
           "The unique remote service name used to bind the bank object in the RMI registry.",
       required = true)
   private String serverName;
-
-  @Getter private List<Node> remotePeers = new ArrayList<>();
 
   @Option(
       names = {"-r", "--remote-peers"},
@@ -52,12 +52,10 @@ public class BankServerConfig implements Runnable {
       if (parts.length == 3) {
         remotePeers.add(new Node(parts[0], Integer.parseInt(parts[1]), parts[2]));
       } else if (parts.length == 2) {
-        remotePeers.add(new Node("127.0.0.1", Integer.parseInt(parts[1]), parts[0]));
+        remotePeers.add(new Node("127.0.0.1", Integer.parseInt(parts[0]), parts[1]));
       } else {
         System.err.println("Invalid format for node: " + node + " (Use IP:PORT:NAME or PORT:NAME)");
       }
-
-      System.out.println(remotePeers);
     }
   }
 

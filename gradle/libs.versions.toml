@@ -1,7 +1,9 @@
 [versions]
 lombok = "1.18.42"
 picocli = "4.7.7"
+resilience4j = "2.3.0"
 
 [libraries]
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
-picocli = {module="info.picocli:picocli", version.ref = "picocli"}
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+resilience4j-retry = { module = "io.github.resilience4j:resilience4j-retry", version.ref = "resilience4j" }

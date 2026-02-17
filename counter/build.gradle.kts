@@ -11,8 +11,12 @@ application {
     applicationDefaultJvmArgs = listOf("-XX:+UseZGC")
 }
 
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(21)
+    options.encoding = "UTF-8"
+}
+
 dependencies {
     implementation(projects.shared)
     implementation(libs.picocli)
-
 }

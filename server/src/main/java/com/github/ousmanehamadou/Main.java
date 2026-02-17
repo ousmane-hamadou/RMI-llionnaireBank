@@ -8,10 +8,9 @@ import java.util.ArrayList;
 import picocli.CommandLine;
 
 public class Main {
-  static final ActivityLog activityLog = new ActivityLog(new ArrayList<>());
   static final BankServerConfig config = new BankServerConfig();
   static final CommandLine cmd = new CommandLine(config);
-  static final DistributedBankNode nodes = new DistributedBankNode();
+  static final DistributedBankNode<MoneyOrder> nodes = new DistributedBankNode<>();
 
   public static void main(String[] args) {
     if (cmd.execute(args) != 0) {
@@ -19,22 +18,22 @@ public class Main {
     }
 
     try {
-//      IDGenerator localIdGenerator = new IDGeneratorImpl(new ArrayList<>());
-//      var localIdGenerator = (IDGenerator) UnicastRemoteObject.exportObject(localIdGenerator, 0);
+      String idGenName = config.getServerName() + "idGenerator";
+      var idGenerator = new IDGeneratorImpl(idGenName, new ArrayList<>());
+      var idGeneratorRemote = (IDGenerator) UnicastRemoteObject.exportObject(idGenerator, 0);
 
-      var localOrder = new MoneyOrderImpl(config.getServerName(), activityLog, nodes);
-      var moneyOrderServiceStub = (MoneyOrder) UnicastRemoteObject.exportObject(localOrder, 0);
+      var moneyOrder = new MoneyOrderImpl(config.getServerName(), nodes);
+      var moneyOrderRemote = (MoneyOrder) UnicastRemoteObject.exportObject(moneyOrder, 0);
+
+      System.setProperty("java.rmi.server.hostname", config.getIpAddress());
       var registry = LocateRegistry.createRegistry(config.getPort());
+      registry.rebind(idGenName, idGeneratorRemote);
+      registry.rebind(config.getServerName(), moneyOrderRemote);
 
-      registry.rebind(config.getServerName(), moneyOrderServiceStub);
-
-      if (!config.getRemotePeers().isEmpty()) {
-        nodes.joinGroup(config);
-      }
-
+      if (!config.getRemotePeers().isEmpty())
+        nodes.joinGroup(config.getRemotePeers(), MoneyOrder.class);
     } catch (Exception e) {
-      System.out.printf("Unable to start %s: %s%n", config.getServerName(), e.getMessage());
-      e.printStackTrace();
+      System.out.printf("unable to start %s: %s%n", config.getServerName(), e.getMessage());
     }
   }
 }

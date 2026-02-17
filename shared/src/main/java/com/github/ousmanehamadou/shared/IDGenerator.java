@@ -9,4 +9,6 @@ public interface IDGenerator extends Remote {
   IDGenerator whoHasToken() throws RemoteException;
 
   int challenge() throws RemoteException;
+
+  String getName() throws RemoteException;
 }

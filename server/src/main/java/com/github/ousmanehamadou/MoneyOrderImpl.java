@@ -4,29 +4,24 @@ import com.github.ousmanehamadou.shared.*;
 import com.github.ousmanehamadou.shared.exception.DomainException.*;
 import java.rmi.RemoteException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.StructuredTaskScope;
-import java.util.concurrent.StructuredTaskScope.Joiner;
-import java.util.concurrent.StructuredTaskScope.Subtask;
 
 public class MoneyOrderImpl implements MoneyOrder {
-  private final ActivityLog activityLog;
-  private final DistributedBankNode nodes;
+  private final ActivityLog activityLog = new ActivityLog(new ArrayList<>());
+  private final DistributedBankNode<MoneyOrder> nodes;
   private final String name;
   private final ConcurrentHashMap<Order, MoneyOrder> ordersForPrecessExternal =
       new ConcurrentHashMap<>();
   private final ConcurrentSkipListSet<Integer> orderStillBeingResearched =
       new ConcurrentSkipListSet<>();
 
-  MoneyOrderImpl(String name, ActivityLog activityLog, DistributedBankNode nodes)
-      throws RemoteException {
+  MoneyOrderImpl(String name, DistributedBankNode<MoneyOrder> nodes) throws RemoteException {
     super();
     this.name = name;
-    this.activityLog = activityLog;
     this.nodes = nodes;
   }
-
 
   private Optional<Pair> findOnExternalNodes(int ref) {
     if (linkNodes().isEmpty()) return Optional.empty();
@@ -37,54 +32,42 @@ public class MoneyOrderImpl implements MoneyOrder {
       return Optional.empty();
     }
     orderStillBeingResearched.add(ref);
+
     try {
-      try (var scope = StructuredTaskScope.open(Joiner.anySuccessfulResultOrThrow())) {
-        System.out.println("*********************");
+      var tasks = new ArrayList<CompletableFuture<Pair>>();
 
-        var subTasks = new ArrayList<Subtask<Order>>();
-        var nodes = new ArrayList<MoneyOrder>();
-
-        for (var rm : linkNodes()) {
-          subTasks.add(scope.fork(() -> rm.tracking(ref)));
-          nodes.add(rm);
-
-          scope.join();
-
-          for (var sb : subTasks) {
-            int i = subTasks.indexOf(sb);
-            Order resp = sb.get();
-            System.out.println(resp);
-
-            if (!Objects.isNull(resp)) {
-              return Optional.of(new Pair(resp, nodes.get(i)));
-            }
-          }
-        }
-      } catch (OrderNotFoundException e) {
-        System.out.println("order not found");
-        return Optional.empty();
-      } catch (InterruptedException e) {
-        return Optional.empty();
-      } finally {
-        orderStillBeingResearched.remove(ref);
+      for (var rm : linkNodes()) {
+        tasks.add(
+            CompletableFuture.supplyAsync(
+                    () -> {
+                      try {
+                        return rm.tracking(ref);
+                      } catch (RemoteException e) {
+                        return null;
+                      }
+                    })
+                .thenApply(order -> new Pair(order, rm))
+                .exceptionally(cause -> null));
       }
+
+      var allTasks = CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]));
+
+      return allTasks
+          .thenApply(
+              ignored -> tasks.stream().map(CompletableFuture::join).filter(Objects::nonNull).findFirst())
+          .join();
+
     } catch (Exception e) {
       return Optional.empty();
+    } finally {
+      orderStillBeingResearched.remove(ref);
     }
-    return Optional.empty();
   }
 
   private Optional<Pair> findOrderByRef(int ref) {
-    System.out.println("findOrderByRef(" + ref + ")");
-
     return activityLog.orders().stream()
         .filter(order -> order.ref() == ref)
         .map(o -> new Pair(o, this))
-        .map(
-            o -> {
-              System.out.println(o);
-              return o;
-            })
         .findAny()
         .or(() -> findOnExternalNodes(ref));
   }
@@ -92,7 +75,6 @@ public class MoneyOrderImpl implements MoneyOrder {
   @Override
   public Order updateOrderStatus(Order order, Status status)
       throws IllegalArgumentException, RemoteException {
-    //    throwOnNotReady();
     if (ordersForPrecessExternal.containsKey(order)) {
       Order remoteOrder = ordersForPrecessExternal.get(order).updateOrderStatus(order, status);
       ordersForPrecessExternal.remove(order);
@@ -143,10 +125,6 @@ public class MoneyOrderImpl implements MoneyOrder {
 
   @Override
   public CashedStatus cashing(int ref) throws RemoteException, OrderNotFoundException {
-    //    throwOnNotReady();
-
-    System.out.println("catching(" + ref + ")");
-
     var req = findOrderByRef(ref).orElseThrow(() -> new OrderNotFoundException(ref));
     System.out.println(req);
 
@@ -159,7 +137,6 @@ public class MoneyOrderImpl implements MoneyOrder {
 
   @Override
   public Status cancelling(int ref) throws RemoteException {
-    //    throwOnNotReady();
     var req = findOrderByRef(ref).orElseThrow(() -> new OrderNotFoundException(ref));
 
     if (req.second().getRemoteName().equals(name)) return cancelOrder(req.first());
@@ -170,8 +147,6 @@ public class MoneyOrderImpl implements MoneyOrder {
 
   @Override
   public Order tracking(int ref) {
-    //    throwOnNotReady();
-
     return findOrderByRef(ref).map(Pair::first).orElseThrow(() -> new OrderNotFoundException(ref));
   }
 
