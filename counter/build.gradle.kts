@@ -19,4 +19,8 @@ tasks.withType<JavaCompile>().configureEach {
 dependencies {
     implementation(projects.shared)
     implementation(libs.picocli)
+    compileOnly(libs.lombok)
+    annotationProcessor(libs.lombok)
+    implementation(libs.log4j.core)
+    implementation(libs.log4j.api)
 }

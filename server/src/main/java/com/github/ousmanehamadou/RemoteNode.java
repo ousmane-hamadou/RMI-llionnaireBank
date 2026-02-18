@@ -10,12 +10,19 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.*;
 import lombok.Getter;
+import lombok.extern.log4j.Log4j2;
 
-public class DistributedBankNode<T extends Remote> {
+@Log4j2
+public class RemoteNode<T extends Remote> {
   @Getter private final ConcurrentHashMap<String, T> peerServices = new ConcurrentHashMap<>();
 
   private CompletionStage<T> remoteConnection(
-      Node node, Class<T> clazz, int[] attemptCounts, int index, int maxAttempts) {
+      Node node,
+      Class<T> clazz,
+      String serviceName,
+      int[] attemptCounts,
+      int index,
+      int maxAttempts) {
     if (attemptCounts[index]++ > maxAttempts) {
       return CompletableFuture.completedStage(null);
     }
@@ -25,8 +32,7 @@ public class DistributedBankNode<T extends Remote> {
       var service = registry.lookup(node.name());
 
       peerServices.put(node.name(), clazz.cast(service));
-      System.out.printf("[JOINED] Connected to %s on port %d%n", node.name(), node.port());
-      System.out.flush();
+      log.info("{} - connected to {} on port {}", serviceName, node.name(), node.port());
 
       return CompletableFuture.completedStage(clazz.cast(service));
     } catch (Exception e) {
@@ -34,9 +40,9 @@ public class DistributedBankNode<T extends Remote> {
     }
   }
 
-  public void joinGroup(List<Node> nodes, Class<T> clazz) {
+  public long joinGroup(List<Node> nodes, String serviceName, Class<T> clazz) {
     int numberOfPeers = nodes.size();
-    if (numberOfPeers == 0) return;
+    if (numberOfPeers == 0) return 0;
     int maxAttempts = 10;
 
     var retryConfig =
@@ -60,24 +66,23 @@ public class DistributedBankNode<T extends Remote> {
                     scheduler,
                     () ->
                         remoteConnection(
-                            nodes.get(index), clazz, attemptCounts, index, maxAttempts))
+                            nodes.get(index),
+                            clazz,
+                            serviceName,
+                            attemptCounts,
+                            index,
+                            maxAttempts))
                 .toCompletableFuture();
         tasks.add(task);
       }
 
       var allTasks = CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]));
 
-      allTasks
+      return allTasks
           .thenApply(
-              ignored -> tasks.stream().map(CompletableFuture::join).filter(Objects::nonNull).count())
-          .thenAccept(n -> logMsg(n == numberOfPeers))
+              ignored ->
+                  tasks.stream().map(CompletableFuture::join).filter(Objects::nonNull).count())
           .join();
     }
-  }
-
-  private void logMsg(boolean allConnected) {
-    if (allConnected) System.out.println("=== ALL PEERS CONNECTED. Server is now ACTIVE ===");
-    else System.err.println("=== WARNING: Some peers are still missing after timeout ===");
-    System.out.flush();
   }
 }

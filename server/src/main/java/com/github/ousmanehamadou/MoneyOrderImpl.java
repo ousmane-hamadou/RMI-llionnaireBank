@@ -7,20 +7,25 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import lombok.extern.log4j.Log4j2;
 
+@Log4j2
 public class MoneyOrderImpl implements MoneyOrder {
   private final ActivityLog activityLog = new ActivityLog(new ArrayList<>());
-  private final DistributedBankNode<MoneyOrder> nodes;
+  private final RemoteNode<MoneyOrder> nodes;
   private final String name;
   private final ConcurrentHashMap<Order, MoneyOrder> ordersForPrecessExternal =
       new ConcurrentHashMap<>();
   private final ConcurrentSkipListSet<Integer> orderStillBeingResearched =
       new ConcurrentSkipListSet<>();
+  private final IDGenerator idGenerator;
 
-  MoneyOrderImpl(String name, DistributedBankNode<MoneyOrder> nodes) throws RemoteException {
+  MoneyOrderImpl(String name, RemoteNode<MoneyOrder> nodes, IDGenerator idGenerator)
+      throws RemoteException {
     super();
     this.name = name;
     this.nodes = nodes;
+    this.idGenerator = idGenerator;
   }
 
   private Optional<Pair> findOnExternalNodes(int ref) {
@@ -54,7 +59,23 @@ public class MoneyOrderImpl implements MoneyOrder {
 
       return allTasks
           .thenApply(
-              ignored -> tasks.stream().map(CompletableFuture::join).filter(Objects::nonNull).findFirst())
+              ignored ->
+                  tasks.stream()
+                      .map(CompletableFuture::join)
+                      .filter(Objects::nonNull)
+                      .filter(pair -> Objects.nonNull(pair.first()))
+                      .peek(
+                          ro -> {
+                            try {
+                              log.info(
+                                  "REF [{}] located on REMOTE NODE [{}]. Initiating distributed payout.",
+                                  ref,
+                                  ro.second().getRemoteName());
+                            } catch (RemoteException e) {
+                              throw new RuntimeException(e);
+                            }
+                          })
+                      .findFirst())
           .join();
 
     } catch (Exception e) {
@@ -68,8 +89,23 @@ public class MoneyOrderImpl implements MoneyOrder {
     return activityLog.orders().stream()
         .filter(order -> order.ref() == ref)
         .map(o -> new Pair(o, this))
+        .peek(
+            order -> {
+              try {
+                if (order.second().getRemoteName().equals(name)) {
+                  log.info("REF [{}] found in LOCAL LEDGER. Processing payout...", ref);
+                }
+              } catch (RemoteException e) {
+                throw new RuntimeException(e);
+              }
+            })
         .findAny()
-        .or(() -> findOnExternalNodes(ref));
+        .or(
+            () -> {
+              log.info("REF [{}] not found locally. Searching distributed nodes...", ref);
+
+              return findOnExternalNodes(ref);
+            });
   }
 
   @Override
@@ -102,10 +138,11 @@ public class MoneyOrderImpl implements MoneyOrder {
   private CashedStatus cashOrder(Order order) throws RemoteException {
     return switch (order.status()) {
       case Status.AwaitingPayout ignored -> {
-        Status status =
+        var status =
             updateOrderStatus(
                     order, new Status.Cashed("Money order paid to %s".formatted(order.to())))
                 .status();
+
         yield new CashedStatus(status, true);
       }
       case Status status -> new CashedStatus(status, false);
@@ -114,25 +151,55 @@ public class MoneyOrderImpl implements MoneyOrder {
 
   @Override
   public Order issuing(String from, String to, int amount) throws RemoteException {
-    //    throwOnNotReady();
+    log.info(
+        "ISSUANCE: Preparing new money order. Sender: [{}], Recipient: [{}], Amount: {} FCFA",
+        from,
+        to,
+        amount);
 
     var status =
         new Status.AwaitingPayout("Money order for %s — Status: Pending payment".formatted(to));
-    var order = new Order(new Random().nextInt(10), from, to, status, amount);
+    var nextId = idGenerator.getNextId();
+
+    var order = new Order(nextId, from, to, status, amount);
     activityLog.orders().add(order);
+    log.debug("ISSUANCE: Data validated. Order id: {}", nextId);
+
     return order;
   }
 
   @Override
   public CashedStatus cashing(int ref) throws RemoteException, OrderNotFoundException {
     var req = findOrderByRef(ref).orElseThrow(() -> new OrderNotFoundException(ref));
-    System.out.println(req);
 
-    if (req.second().getRemoteName().equals(name)) return cashOrder(req.first());
-
+    String remoteName = req.second().getRemoteName();
+    if (remoteName.equals(name)) {
+      CashedStatus cashedStatus = cashOrder(req.first());
+      if (cashedStatus.done()) {
+        log.info(
+            "CASHING_SUCCESS: Local payout completed for beneficiary [{}]. Status: COLLECTED.",
+            req.first().to());
+      } else {
+        log.info(
+            "CASHING_REJECTED: Payout for REF [{}]  refused [{}].", ref, cashedStatus.status());
+      }
+      return cashedStatus;
+    }
     ordersForPrecessExternal.put(req.first(), req.second());
 
-    return cashOrder(req.first());
+    CashedStatus cashedStatus = cashOrder(req.first());
+
+    if (cashedStatus.done()) {
+      log.info(
+          "SUCCESS: Distributed payout for REF [{}] confirmed by peer node. {}", ref, remoteName);
+    } else {
+      log.error(
+          "REMOTE_CASHING_REJECTED: Payout for REF [{}] refused by remote node [{}]. (status: {}) ",
+          ref,
+          remoteName,
+          cashedStatus.status());
+    }
+    return cashedStatus;
   }
 
   @Override

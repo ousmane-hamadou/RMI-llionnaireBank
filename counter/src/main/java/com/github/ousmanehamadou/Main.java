@@ -30,11 +30,11 @@ public class Main {
               + config.getServiceName().toUpperCase()
               + " successfully.");
     } catch (NotBoundException e) {
-      System.err.println("The 'IDGenerator' service is not bound (registered) on the server.");
+      System.err.println(
+          "The '" + config.getServiceName() + "' service is not bound (registered) on the server.");
     } catch (RemoteException e) {
       System.err.println("Critical error: Unable to connect to the RMI Registry.");
     } catch (Exception e) {
-      System.out.println("$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
       throw new RuntimeException(e);
     }
   }

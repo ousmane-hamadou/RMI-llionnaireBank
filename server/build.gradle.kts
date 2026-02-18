@@ -18,8 +18,10 @@ tasks.withType<JavaCompile>().configureEach {
 dependencies {
     implementation(projects.shared)
     implementation(libs.picocli)
-    implementation(libs.lombok)
     implementation(libs.resilience4j.retry)
+    implementation(libs.log4j.core)
+    implementation(libs.log4j.api)
+    compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
 
 }

@@ -33,7 +33,6 @@ public class TUI {
 
   public static void clearScreen() {
     System.out.print("\033[H\033[2J");
-    //    System.out.flush(); // Ensures the command is sent immediately
   }
 
   private static String getWelcomeMessage() {
@@ -43,12 +42,12 @@ public class TUI {
         + "Status: CONNECTED TO DISTRIBUTED CLUSTER\n"
         + "Ready for Banking Operations:\n\n"
         + menuOptions
-        + "Security Note: Never share your MTCN (Tracking Number).\n"
+        + "Security Note: Never share your REF (Tracking Number).\n"
         + border
         + "Enter your choice (1-4) or 'exit' to quit > ";
   }
 
-  public static void run(MoneyOrder moneyOrderService) throws Exception {
+  public static void run(MoneyOrder moneyOrderService) {
     while (true) {
       clearScreen();
       System.out.print(getWelcomeMessage());
@@ -338,7 +337,6 @@ public class TUI {
     System.out.flush();
     try {
       var ret = moneyOrder.cashing(ref);
-      System.out.println(ret);
       var status = ret.status();
       var sref = String.valueOf(ref);
 
@@ -349,10 +347,8 @@ public class TUI {
         default -> System.out.print(getAlreadyCashedMessage(String.valueOf(ref)));
       }
     } catch (DomainException.OrderNotFoundException e) {
-      System.out.println("---------");
       System.out.print(getReferenceNotFoundPage(String.valueOf(ref)));
     } catch (RemoteException e) {
-      System.out.println("(((((((((((((((((((((((((((((((((");
       System.out.flush();
       throw new RuntimeException(e);
     }
