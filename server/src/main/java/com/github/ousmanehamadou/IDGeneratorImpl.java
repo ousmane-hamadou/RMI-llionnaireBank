@@ -127,12 +127,15 @@ public class IDGeneratorImpl implements IDGenerator {
     CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
         .thenApply(
             ignored -> {
+              isTokenIsForMine.set(true);
               tasks.stream()
                   .map(CompletableFuture::join)
                   .filter(c -> c.v() > myChallenge)
                   .findFirst()
                   .ifPresent(
                       c -> {
+                        isTokenIsForMine.set(false);
+
                         try {
                           log.info(
                               "Node {} is the FIRST to acquire the Generation Token",
@@ -140,8 +143,6 @@ public class IDGeneratorImpl implements IDGenerator {
                         } catch (RemoteException e) {
                           throw new RuntimeException(e);
                         }
-
-                        isTokenIsForMine.set(false);
                       });
               return null;
             })
