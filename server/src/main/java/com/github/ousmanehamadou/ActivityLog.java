@@ -1,6 +1,6 @@
 package com.github.ousmanehamadou;
 
 import com.github.ousmanehamadou.shared.Order;
-import java.util.List;
+import java.util.concurrent.ConcurrentSkipListSet;
 
-public record ActivityLog(List<Order> orders) {}
+public record ActivityLog(ConcurrentSkipListSet<Order> orders) {}

@@ -48,6 +48,7 @@ public class Main {
                 IDGenerator.class);
 
         idGenerator.askOtherChallenge();
+
         joinedNodeCount +=
             MONEY_ORDER_REMOTE_NODE.joinGroup(
                 config.getRemotePeers(), "money-order", MoneyOrder.class);

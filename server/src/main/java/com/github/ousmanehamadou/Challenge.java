@@ -1,3 +1,6 @@
 package com.github.ousmanehamadou;
 
-public record Challenge(long v, IDGenerator generator) {}
+import java.io.Serializable;
+
+
+public record Challenge(long v, IDGenerator generator) implements Serializable {}

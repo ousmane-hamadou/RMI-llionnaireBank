@@ -24,6 +24,7 @@ public class IDGeneratorImpl implements IDGenerator {
     this.nodes = nodes;
     this.myChallenge = SecureRandom.getInstanceStrong().nextLong();
     this.name = name;
+    log.info("CHALLENGE {}", this.myChallenge);
   }
 
   private List<IDGenerator> linkNodes() {
@@ -39,7 +40,6 @@ public class IDGeneratorImpl implements IDGenerator {
   public int latchToken() throws RemoteException {
     if (isTokenIsForMine.compareAndSet(true, false)) {
       log.info("ID Generation Token successfully RELEASED to peers.");
-
       return id.get();
     }
 
@@ -104,6 +104,7 @@ public class IDGeneratorImpl implements IDGenerator {
 
   @Override
   public Challenge challenge() throws RemoteException {
+    log.info("{} {}", this.myChallenge, this);
     return new Challenge(this.myChallenge, this);
   }
 
@@ -119,36 +120,33 @@ public class IDGeneratorImpl implements IDGenerator {
                 try {
                   return new Challenge(node.challenge().v(), node);
                 } catch (RemoteException e) {
-                  return new Challenge(Long.MIN_VALUE, node);
+                  e.printStackTrace();
+                  return null;
                 }
               }));
     }
 
     CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
-        .thenApply(
+        .thenAccept(
             ignored -> {
-              isTokenIsForMine.set(true);
-              tasks.stream()
-                  .map(CompletableFuture::join)
-                  .filter(c -> c.v() > myChallenge)
-                  .findFirst()
-                  .ifPresent(
-                      c -> {
-                        isTokenIsForMine.set(false);
-
-                        try {
-                          log.info(
-                              "Node {} is the FIRST to acquire the Generation Token",
-                              c.generator().getName());
-                        } catch (RemoteException e) {
-                          throw new RuntimeException(e);
-                        }
-                      });
-              return null;
+              var count =
+                  tasks.stream()
+                      .peek(log::info)
+                      .map(CompletableFuture::join)
+                      .peek(v -> log.info("Other Chan {}", v.v()))
+                      .filter(c -> c.v() > myChallenge)
+                      .findAny()
+                      .stream()
+                      .count();
+              log.info("COUNTER {}", count);
+              if (count > 0) {
+                isTokenIsForMine.compareAndSet(true, false);
+              }
             })
         .join();
 
-    if (isTokenIsForMine.get())
+    if (isTokenIsForMine.get()) {
       log.info("FIRST to acquire the Generation Token. Initializing global sequence...");
+    }
   }
 }

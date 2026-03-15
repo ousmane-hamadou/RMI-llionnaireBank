@@ -11,7 +11,7 @@ import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 public class MoneyOrderImpl implements MoneyOrder {
-  private final ActivityLog activityLog = new ActivityLog(new ArrayList<>());
+  private final ActivityLog activityLog;
   private final RemoteNode<MoneyOrder> nodes;
   private final String name;
   private final ConcurrentHashMap<Order, MoneyOrder> ordersForPrecessExternal =
@@ -26,6 +26,7 @@ public class MoneyOrderImpl implements MoneyOrder {
     this.name = name;
     this.nodes = nodes;
     this.idGenerator = idGenerator;
+    activityLog = new ActivityLog(new ConcurrentSkipListSet<>(Comparator.comparing(Order::ref)));
   }
 
   private Optional<Pair> findOnExternalNodes(int ref) {
